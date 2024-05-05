@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         评论一切 comment-everywhere
+// @name         📝 千言万语
 // @namespace    https://ez118.github.io/
-// @version      0.1
+// @version      0.2
 // @description  在任意网页都能留下自己的评论
 // @author       ZZY_WISU
 // @match        https://*/*
@@ -20,7 +20,7 @@
 // ==/UserScript==
 
 var currentServer = "http://localhost/";
-var userInfo = { "name": "EZ118", "id": "1145141919810" };
+var userInfo = { "name": "anonymous", "id": "1145141919810" };
 var pageSize = 20;
 var serverCfg = [];
 var commentContainer;
@@ -40,6 +40,9 @@ function getRequest(url, func) {
         if(result == "response-error") { func(null) }
         func(result);
     });
+}
+function isTopWindow() {
+    return window.self === window.top;
 }
 
 function escapeHtml(str) {
@@ -63,8 +66,8 @@ function getServerConfig(url, func){
         try{
             var result = JSON.parse(res);
             if(!result.info || !result.api) { alert("无法获得服务器基本信息"); return; }
-            if(result.info.status != "online") { alert("服务器被配置为非工作状态，暂时无法链接"); alert("【公告】" + result.info.noticeboard); return; }
-            result.url = url;
+            if(result.info.status != "online") { alert("服务器被配置为非工作状态，暂时无法连接"); alert("【公告】" + result.info.noticeboard); return; }
+            result.info.url = url;
             func(result);
         } catch {
             alert("无法处理服务器传回的信息");
@@ -78,10 +81,10 @@ function getComments(url, servercfg, containerEle){
     getRequest(currentServer + "/" + newUrl, function(res){
         var result = JSON.parse(res);
         if(result.code != 0) { containerEle.innerHTML += "<b>服务器返回了错误信息</b><br><i>" + result.msg + "</i>"; return; }
-        var html = "<h1>当前评论</h1><p class='notice'>【公告】" + escapeHtml(servercfg.info.noticeboard) + "</p>";
+        var html = "<h1>📟&nbsp;评论</h1><p class='notice'>【公告】" + escapeHtml(servercfg.info.noticeboard) + "</p>";
         for(let i = result.data.length - 1; i >= 0; i --) {
             html += `<div class="item">
-                     ◩&nbsp;` + escapeHtml(result.data[i].user_name) + `&nbsp;[评论ID:` + escapeHtml(result.data[i].cid) + `]<br>
+                     <span class="username">` + escapeHtml(result.data[i].user_name) + `</span>&nbsp;<span class="commentid">[评论ID:` + escapeHtml(result.data[i].cid) + `]</span><br>
                      ` + escapeHtml(result.data[i].content) + `<br>
                      <span class="pubdate">` + escapeHtml(result.data[i].date) + `</span>
                  </div>`;
@@ -95,7 +98,7 @@ function sendComments(url, servercfg, content, username, userid){
     var newUrl = servercfg.api.submit_comments.replace("{{url}}", encodeURI(url)).replace("{{user_id}}", encodeURI(userid)).replace("{{user_name}}", encodeURI(username)).replace("{{content}}", encodeURI(content));
     getRequest(currentServer + "/" + newUrl, function(res){
         var result = JSON.parse(res);
-        if(result.code == 0) { alert("ok"); getComments(url, servercfg, commentContainer) }
+        if(result.code == 0) { alert("已发送"); getComments(url, servercfg, commentContainer) }
         else { alert(result.msg) }
     });
 }
@@ -104,7 +107,7 @@ function delComments(url, servercfg, commentid, userid){
     var newUrl = servercfg.api.delete_comments.replace("{{comment_id}}", encodeURI(commentid)).replace("{{user_id}}", encodeURI(userid));
     getRequest(currentServer + "/" + newUrl, function(res){
         var result = JSON.parse(res);
-        if(result.code == 0) { alert("ok"); }
+        if(result.code == 0) { alert("已删除"); }
         else { alert(result.msg) }
     });
 }
@@ -113,51 +116,78 @@ var menu1 = GM_registerMenuCommand('用户设置', function () {
     try{ var origval = GM_getValue("userInfo").name; } catch { var origval = null; }
     var val = prompt("【用户设置】请设置用户名以使用脚本（请勿以敏感字符作为用户名）", origval ?? "");
     var gen_id = md5(val + Date.now()).substring(0,10);
-    if(val) { GM_setValue("userInfo", {"name": val, "id": gen_id})}
-    else { alert("无效的用户名，请重新设置") }
+
+    if(val == "" || val.length > 20) { alert("无效的用户名，请重试"); return; }
+    else if(val == null) { return; }
+    else { GM_setValue("userInfo", {"name": val, "id": gen_id}) }
 }, 'u');
+
 var menu2 = GM_registerMenuCommand('删除评论', function () {
     var val = prompt("【删除评论】请输入需要删除的评论ID（只能删除自己的评论）", "");
-    if(!val) { alert("无效的ID") }
-    delComments(getCurrentUrl(), serverCfg, val, userInfo.id);
-}, 'o');
+    if(val == "") { alert("无效的ID"); return; }
+    else if(val == null) { return; }
+    else { delComments(getCurrentUrl(), serverCfg, val, userInfo.id); }
+}, 'd');
+
+var menu3 = GM_registerMenuCommand('配置服务器', function () {
+    try{ var origval = GM_getValue("serverInfo").info.url; } catch { var origval = null; }
+    var val = prompt("【配置服务器】请输入一个有效的服务器链接\n（访问Github仓库获取官方测试服务器链接）", origval ?? "");
+
+    getServerConfig(currentServer, function(server_cfg){
+        GM_setValue("serverInfo", server_cfg);
+        serverCfg = server_cfg;
+        alert("【配置服务器】已连接到服务器。\n服务器信息：\n名称：" + server_cfg.info.name + "；\n描述：" + server_cfg.info.description + "；\n公告：" + server_cfg.info.noticeboard);
+    });
+}, 's');
 
 (function() {
     'use strict';
-
-    if(!GM_getValue("userInfo")) { alert("【评论一切 comment-everywhere】未设置用户名，请在该页面任意位置右键->Tampermonkey->评论一切->用户设置，自定义个人昵称/用户名，方可使用") }
+    /* 如果页面在iframe内，则不执行脚本 */
+    if(!isTopWindow()) { return; }
+    /* 未设置用户名提示 */
+    if(!GM_getValue("userInfo")) { alert("【千言万语】未设置用户名，请在该页面任意位置右键->Tampermonkey->评论一切->用户设置，自定义个人昵称/用户名，方可使用"); return; }
     else { userInfo = GM_getValue("userInfo"); }
+    /* 未配置服务器提示 */
+    if(!GM_getValue("serverInfo")) { alert("【千言万语】未设置服务器，请在该页面任意位置右键->Tampermonkey->评论一切->配置服务器，方可使用"); return; }
+    else { serverCfg = GM_getValue("serverInfo"); }
 
-    GM_addStyle(`.userscript-commentContainer{ position:fixed; top:5vh; right:-300px; bottom:5vh; z-index:9998; width:310px; height:calc(90vh - 10px); background:#d4d9e8ed; color:#333; transition: all .1s; border:1px dashed blue; overflow-x:hidden; overflow-y:scroll; border-radius:15px 0px 0px 15px; padding:5px; }
-                 .userscript-commentContainer:hover{ right: -1px; }
-                 .userscript-commentContainer h1{ font-size:large; font-weight:bold; margin:10px; }
-                 .userscript-commentContainer .notice { font-size:medium; font-weight:light; padding:5px; border:1px solid #52add2; background:#bfecff; color:#3c98bd; word-wrap:break-word; word-break:normal; margin:5px 10px; width:260px; border-radius:10px; }
-                 .userscript-commentContainer .item{ font-size:medium; font-weight:light; padding: 5px; border:1px solid #969baa; margin: 5px 10px; word-wrap:break-word; word-break:normal; width:260px; background:#e1e6f5cd; border-radius: 10px; }
-                 .userscript-commentContainer .item .pubdate{ font-size: small; color: #888; user-select:none; }
-                 .userscript-commentBtn { position: fixed; bottom: 10px; right: 10px; padding: 5px 8px; border:2px solid #138AF1; border-radius:15px; z-index: 9999; font-size: large; background:AAA; cursor: pointer; }
-                 `);
+    GM_addStyle(`
+        body { -webkit-appearance: none !important; }
+        .userscript-commentContainer{ position:fixed; top:5vh; right:-290px; bottom:5vh; z-index:9998; width:310px; height:40px; background:#e4e9f6d1; color:#333; transition: all .4s; border:1px solid #7282adba; overflow-x:hidden; overflow-y:scroll; border-radius:15px 0 0 15px; padding:5px; font-family:"Hiragino Sans GB","Microsoft YaHei","WenQuanYi Micro Hei",sans-serif; }
+        .userscript-commentContainer:hover{ right:-1px; height:calc(90vh - 10px); }
+        .userscript-commentContainer h1{ font-size:large; font-weight:bold; margin:10px; user-select:none; }
+        .userscript-commentContainer .notice{ font-size:medium; font-weight:light; padding:5px; border:1px solid #52add2; background:#bfecff; color:#3c98bd; word-wrap:break-word; word-break:normal; margin:5px 10px; width:260px; border-radius:10px; }
+        .userscript-commentContainer .item{ font-size:medium; font-weight:light; padding: 5px; border:1px solid #969baa; margin: 5px 10px; word-wrap:break-word; word-break:normal; width:260px; background:#e1e6f5cd; border-radius:10px; user-select:text; }
+        .userscript-commentContainer .item .pubdate{ font-size:small; color:#666; user-select:none; }
+        .userscript-commentContainer .item .commentid{ font-size:small; color:#555; user-select:text; }
+        .userscript-commentContainer .item .username{ font-size:medium; font-weight:bold; color:#173852; user-select:none; }
+        .userscript-commentBtn { position:fixed; top:0px; right:-6vh; padding:5px; border:1px solid #969baa; border-radius:0 0 0 15px; z-index:9999; width:5vh; height:5vh; font-size:larger; background:#e1e6f5cd; cursor:pointer; transition:all .4s; }
+        .userscript-commentBtn:hover { border:1px solid #138AF1; right:-1px; }
+        .userscript-commentContainer:hover ~ .userscript-commentBtn { right:-1px; }
+    `);
+
+    /* 添加评论容器 */
     commentContainer = document.createElement("div");
     commentContainer.setAttribute("class", "userscript-commentContainer");
     commentContainer.setAttribute("id", "userscript-commentContainer");
     document.body.appendChild(commentContainer);
     commentContainer.innerHTML = "";
 
+    /* 添加评论按钮 */
     var commentBtn = document.createElement("button");
     var commentBtnTxt = document.createTextNode("📝");
     commentBtn.setAttribute("class", "userscript-commentBtn");
+    commentBtn.setAttribute("title", "发表评论");
     document.body.appendChild(commentBtn);
     commentBtn.appendChild(commentBtnTxt);
 
+    /* 获取评论 */
     var url = getCurrentUrl();
-    getServerConfig(currentServer, function(server_cfg){
-        serverCfg = server_cfg;
-        getComments(url, server_cfg, commentContainer);
+    getComments(url, serverCfg, commentContainer);
 
-        $(commentBtn).click(function(){
-            var val = prompt("输入评论内容", "");
-            if(val){ sendComments(url, server_cfg, val, userInfo.name, userInfo.id); }
-        });
+    /* 发表评论 */
+    $(commentBtn).click(function(){
+        var val = prompt("输入评论内容", "");
+        if(val){ sendComments(url, serverCfg, val, userInfo.name, userInfo.id); }
     });
-
-
 })();
